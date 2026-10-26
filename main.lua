@@ -1,150 +1,159 @@
 
+-- FPS TRAINING DEBUG CLIENT
 -- Roblox Studio LocalScript
--- Place in StarterPlayer > StarterPlayerScripts
--- For debugging in your own Roblox experience.
+-- Location: StarterPlayer > StarterPlayerScripts
+-- Targets NPC models tagged "TrainingBot" only.
+-- No executor, obfuscation, or anti-cheat bypass.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local CollectionService = game:GetService("CollectionService")
 local UserInputService = game:GetService("UserInputService")
 
-local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
 
 local CONFIG = {
-    Accent = Color3.fromRGB(80, 190, 255),
-    UpdateInterval = 0.1,
+    BotTag = "TrainingBot",
+    UpdateRate = 0.05,
+    AimSmoothness = 8,
+    AimRange = 250,
+    ShowHitboxes = true,
+    ShowHealth = true,
+    ShowDistance = true,
 }
 
-local visualsEnabled = true
-local showHitboxes = false
-local showStuds = true
-
-local overlays = {}
-local connections = {}
+local running = true
+local showVisuals = true
+local aimEnabled = false
 local elapsed = 0
-local frames = 0
-local updateElapsed = 0
+local frameCount = 0
+local fps = 0
+local botData = {}
 
 -- GUI
 local gui = Instance.new("ScreenGui")
-gui.Name = "DebugOverlay"
+gui.Name = "FPSBotDebug"
 gui.ResetOnSpawn = false
-gui.Parent = PlayerGui
+gui.DisplayOrder = 10
+gui.Parent = playerGui
 
 local panel = Instance.new("Frame")
-panel.Name = "Panel"
-panel.Size = UDim2.fromOffset(220, 190)
-panel.Position = UDim2.new(0, 16, 0, 80)
-panel.BackgroundColor3 = Color3.fromRGB(20, 24, 35)
-panel.BackgroundTransparency = 0.15
+panel.Size = UDim2.fromOffset(230, 220)
+panel.Position = UDim2.fromOffset(16, 100)
+panel.BackgroundColor3 = Color3.fromRGB(22, 27, 40)
+panel.BackgroundTransparency = 0.12
 panel.BorderSizePixel = 0
 panel.Parent = gui
 
-Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 14)
+Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 12)
 
-local outline = Instance.new("UIStroke")
-outline.Color = CONFIG.Accent
-outline.Transparency = 0.4
-outline.Parent = panel
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(70, 180, 255)
+stroke.Transparency = 0.35
+stroke.Parent = panel
 
-local padding = Instance.new("UIPadding")
-padding.PaddingTop = UDim.new(0, 10)
-padding.PaddingLeft = UDim.new(0, 12)
-padding.PaddingRight = UDim.new(0, 12)
-padding.Parent = panel
-
-local function makeLabel(name, text, y, height)
+local function makeLabel(text, y)
     local label = Instance.new("TextLabel")
-    label.Name = name
-    label.Size = UDim2.new(1, 0, 0, height)
-    label.Position = UDim2.fromOffset(0, y)
+    label.Position = UDim2.fromOffset(12, y)
+    label.Size = UDim2.new(1, -24, 0, 22)
     label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.fromRGB(235, 240, 255)
     label.Font = Enum.Font.GothamMedium
     label.TextSize = 13
-    label.TextColor3 = Color3.fromRGB(235, 240, 255)
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.Text = text
     label.Parent = panel
     return label
 end
 
-makeLabel("Title", "DEBUG OVERLAY", 0, 20).Font = Enum.Font.GothamBold
-local fpsLabel = makeLabel("FPS", "FPS: --", 22, 18)
-local countLabel = makeLabel("Players", "Players: --", 40, 18)
+makeLabel("NPC FPS TRAINING", 8).Font = Enum.Font.GothamBold
+local fpsLabel = makeLabel("FPS: --", 32)
+local targetLabel = makeLabel("Target: none", 54)
 
 local function makeButton(name, text, y)
     local button = Instance.new("TextButton")
     button.Name = name
-    button.Size = UDim2.new(1, 0, 0, 27)
-    button.Position = UDim2.fromOffset(0, y)
-    button.BackgroundColor3 = Color3.fromRGB(45, 55, 75)
+    button.Position = UDim2.fromOffset(10, y)
+    button.Size = UDim2.new(1, -20, 0, 29)
+    button.BackgroundColor3 = Color3.fromRGB(43, 57, 78)
     button.TextColor3 = Color3.new(1, 1, 1)
-    button.Text = text
-    button.TextSize = 11
+    button.TextSize = 12
     button.Font = Enum.Font.GothamBold
-    button.AutoButtonColor = true
+    button.Text = text
     button.Parent = panel
 
-    Instance.new("UICorner", button).CornerRadius = UDim.new(0, 7)
+    Instance.new("UICorner", button).CornerRadius = UDim.new(0, 6)
     return button
 end
 
-local visualsButton = makeButton("VisualsToggle", "VISUALS: ON", 61)
-local hitboxButton = makeButton("HitboxToggle", "HITBOXES: OFF", 92)
-local studsButton = makeButton("StudsToggle", "DISTANCE: ON", 123)
+local visualButton = makeButton("Visuals", "VISUALS: ON", 82)
+local hitboxButton = makeButton("Hitboxes", "HITBOXES: ON", 115)
+local aimButton = makeButton("AimAssist", "NPC AIM ASSIST: OFF", 148)
+local distanceButton = makeButton("Distance", "DISTANCE: ON", 181)
 
-visualsButton.Activated:Connect(function()
-    visualsEnabled = not visualsEnabled
-    visualsButton.Text = visualsEnabled and "VISUALS: ON" or "VISUALS: OFF"
+visualButton.Activated:Connect(function()
+    showVisuals = not showVisuals
+    visualButton.Text = showVisuals and "VISUALS: ON" or "VISUALS: OFF"
 end)
 
 hitboxButton.Activated:Connect(function()
-    showHitboxes = not showHitboxes
-    hitboxButton.Text = showHitboxes and "HITBOXES: ON" or "HITBOXES: OFF"
+    CONFIG.ShowHitboxes = not CONFIG.ShowHitboxes
+    hitboxButton.Text = CONFIG.ShowHitboxes and
+        "HITBOXES: ON" or "HITBOXES: OFF"
 end)
 
-studsButton.Activated:Connect(function()
-    showStuds = not showStuds
-    studsButton.Text = showStuds and "DISTANCE: ON" or "DISTANCE: OFF"
+aimButton.Activated:Connect(function()
+    aimEnabled = not aimEnabled
+    aimButton.Text = aimEnabled and
+        "NPC AIM ASSIST: ON" or "NPC AIM ASSIST: OFF"
 end)
 
--- Draggable panel for mouse and touch
+distanceButton.Activated:Connect(function()
+    CONFIG.ShowDistance = not CONFIG.ShowDistance
+    distanceButton.Text = CONFIG.ShowDistance and
+        "DISTANCE: ON" or "DISTANCE: OFF"
+end)
+
+-- Drag panel on touch or mouse
 local dragging = false
-local dragInput
 local dragStart
-local panelStart
+local startPosition
 
 panel.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
+    if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseButton1 then
         dragging = true
         dragStart = input.Position
-        panelStart = panel.Position
-
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
+        startPosition = panel.Position
     end
 end)
 
 UserInputService.InputChanged:Connect(function(input)
     if dragging and (
-        input.UserInputType == Enum.UserInputType.MouseMovement
-        or input.UserInputType == Enum.UserInputType.Touch
+        input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseMovement
     ) then
         local delta = input.Position - dragStart
         panel.Position = UDim2.new(
-            panelStart.X.Scale, panelStart.X.Offset + delta.X,
-            panelStart.Y.Scale, panelStart.Y.Offset + delta.Y
+            startPosition.X.Scale,
+            startPosition.X.Offset + delta.X,
+            startPosition.Y.Scale,
+            startPosition.Y.Offset + delta.Y
         )
     end
 end)
 
--- Player visual overlays
-local function removeOverlay(player)
-    local data = overlays[player]
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+
+-- Bot visuals
+local function removeBot(model)
+    local data = botData[model]
     if not data then return end
 
     for _, object in pairs(data) do
@@ -153,178 +162,246 @@ local function removeOverlay(player)
         end
     end
 
-    overlays[player] = nil
+    botData[model] = nil
 end
 
-local function createOverlay(player)
-    if player == LocalPlayer or overlays[player] then return end
+local function addBot(model)
+    if not model:IsA("Model") or botData[model] then
+        return
+    end
+
+    local humanoid = model:FindFirstChildOfClass("Humanoid")
+    local root = model:FindFirstChild("HumanoidRootPart")
+
+    if not humanoid or not root or not root:IsA("BasePart") then
+        return
+    end
 
     local highlight = Instance.new("Highlight")
-    highlight.Name = "DebugHighlight"
-    highlight.FillColor = CONFIG.Accent
+    highlight.Name = "TrainingBotHighlight"
+    highlight.Adornee = model
+    highlight.FillColor = Color3.fromRGB(50, 160, 255)
     highlight.OutlineColor = Color3.new(1, 1, 1)
-    highlight.FillTransparency = 0.85
-    highlight.OutlineTransparency = 0.1
+    highlight.FillTransparency = 0.88
     highlight.DepthMode = Enum.HighlightDepthMode.Occluded
     highlight.Enabled = false
-
-    local healthGui = Instance.new("BillboardGui")
-    healthGui.Name = "DebugHealth"
-    healthGui.Size = UDim2.fromOffset(80, 9)
-    healthGui.StudsOffsetWorldSpace = Vector3.new(0, 3, 0)
-    healthGui.AlwaysOnTop = false
-    healthGui.Enabled = false
-
-    local healthBg = Instance.new("Frame")
-    healthBg.Size = UDim2.fromScale(1, 1)
-    healthBg.BackgroundColor3 = Color3.fromRGB(35, 35, 42)
-    healthBg.BorderSizePixel = 0
-    healthBg.Parent = healthGui
-    Instance.new("UICorner", healthBg).CornerRadius = UDim.new(0, 4)
-
-    local healthBar = Instance.new("Frame")
-    healthBar.Name = "HealthFill"
-    healthBar.Size = UDim2.fromScale(1, 1)
-    healthBar.BackgroundColor3 = Color3.fromRGB(70, 220, 120)
-    healthBar.BorderSizePixel = 0
-    healthBar.Parent = healthBg
-    Instance.new("UICorner", healthBar).CornerRadius = UDim.new(0, 4)
+    highlight.Parent = gui
 
     local hitbox = Instance.new("SelectionBox")
-    hitbox.Name = "DebugHitbox"
-    hitbox.Color3 = CONFIG.Accent
-    hitbox.LineThickness = 0.04
+    hitbox.Name = "TrainingBotHitbox"
+    hitbox.Adornee = root
+    hitbox.Color3 = Color3.fromRGB(255, 190, 50)
+    hitbox.LineThickness = 0.05
     hitbox.Visible = false
+    hitbox.Parent = gui
+
+    local healthGui = Instance.new("BillboardGui")
+    healthGui.Name = "TrainingBotHealth"
+    healthGui.Adornee = root
+    healthGui.Size = UDim2.fromOffset(100, 14)
+    healthGui.StudsOffset = Vector3.new(0, 3.1, 0)
+    healthGui.AlwaysOnTop = true
+    healthGui.Enabled = false
+    healthGui.Parent = gui
+
+    local healthBack = Instance.new("Frame")
+    healthBack.Size = UDim2.fromScale(1, 1)
+    healthBack.BackgroundColor3 = Color3.fromRGB(35, 35, 42)
+    healthBack.BorderSizePixel = 0
+    healthBack.Parent = healthGui
+    Instance.new("UICorner", healthBack).CornerRadius = UDim.new(0, 4)
+
+    local healthFill = Instance.new("Frame")
+    healthFill.Name = "Fill"
+    healthFill.Size = UDim2.fromScale(1, 1)
+    healthFill.BackgroundColor3 = Color3.fromRGB(50, 225, 115)
+    healthFill.BorderSizePixel = 0
+    healthFill.Parent = healthBack
+    Instance.new("UICorner", healthFill).CornerRadius = UDim.new(0, 4)
 
     local distanceGui = Instance.new("BillboardGui")
-    distanceGui.Name = "DebugDistance"
+    distanceGui.Name = "TrainingBotDistance"
+    distanceGui.Adornee = root
     distanceGui.Size = UDim2.fromOffset(120, 22)
-    distanceGui.StudsOffsetWorldSpace = Vector3.new(0, 4, 0)
-    distanceGui.AlwaysOnTop = false
+    distanceGui.StudsOffset = Vector3.new(0, 4, 0)
+    distanceGui.AlwaysOnTop = true
     distanceGui.Enabled = false
+    distanceGui.Parent = gui
 
     local distanceText = Instance.new("TextLabel")
     distanceText.Size = UDim2.fromScale(1, 1)
     distanceText.BackgroundTransparency = 1
     distanceText.TextColor3 = Color3.new(1, 1, 1)
-    distanceText.TextStrokeTransparency = 0.3
+    distanceText.TextStrokeTransparency = 0.25
     distanceText.Font = Enum.Font.GothamBold
     distanceText.TextSize = 13
     distanceText.Text = "-- studs"
     distanceText.Parent = distanceGui
 
-    overlays[player] = {
+    botData[model] = {
+        humanoid = humanoid,
+        root = root,
         highlight = highlight,
-        healthGui = healthGui,
-        healthBar = healthBar,
         hitbox = hitbox,
+        healthGui = healthGui,
+        healthFill = healthFill,
         distanceGui = distanceGui,
         distanceText = distanceText,
     }
 end
 
-local function attachCharacter(player, character)
-    local data = overlays[player]
-    if not data then return end
-
-    local humanoid = character:WaitForChild("Humanoid", 5)
-    local root = character:WaitForChild("HumanoidRootPart", 5)
-    if not humanoid or not root then return end
-
-    data.highlight.Adornee = character
-    data.highlight.Parent = character
-
-    data.healthGui.Adornee = root
-    data.healthGui.Parent = PlayerGui
-
-    data.hitbox.Adornee = root
-    data.hitbox.Parent = character
-
-    data.distanceGui.Adornee = root
-    data.distanceGui.Parent = PlayerGui
+-- Initial NPC discovery and tag monitoring
+for _, instance in ipairs(CollectionService:GetTagged(CONFIG.BotTag)) do
+    addBot(instance)
 end
 
-local function registerPlayer(player)
-    if player == LocalPlayer then return end
+CollectionService:GetInstanceAddedSignal(CONFIG.BotTag):Connect(addBot)
+CollectionService:GetInstanceRemovedSignal(CONFIG.BotTag):Connect(removeBot)
 
-    createOverlay(player)
+-- Aim target selection: tagged NPCs only
+local function findNearestBot()
+    local character = player.Character
+    local myRoot = character and character:FindFirstChild("HumanoidRootPart")
+    local camera = workspace.CurrentCamera
 
-    connections[player] = player.CharacterAdded:Connect(function(character)
-        task.defer(attachCharacter, player, character)
-    end)
-
-    if player.Character then
-        task.defer(attachCharacter, player, player.Character)
-    end
-end
-
-for _, player in ipairs(Players:GetPlayers()) do
-    registerPlayer(player)
-end
-
-Players.PlayerAdded:Connect(registerPlayer)
-
-Players.PlayerRemoving:Connect(function(player)
-    if connections[player] then
-        connections[player]:Disconnect()
-        connections[player] = nil
-    end
-    removeOverlay(player)
-end)
-
--- Performance and display updates
-RunService.Heartbeat:Connect(function(dt)
-    frames += 1
-    elapsed += dt
-    updateElapsed += dt
-
-    if elapsed >= 1 then
-        fpsLabel.Text = ("FPS: %d"):format(math.floor(frames / elapsed + 0.5))
-        countLabel.Text = ("Players: %d"):format(#Players:GetPlayers())
-        frames = 0
-        elapsed = 0
+    if not myRoot or not camera then
+        return nil
     end
 
-    if updateElapsed < CONFIG.UpdateInterval then return end
-    updateElapsed = 0
+    local bestModel = nil
+    local bestScore = math.huge
 
-    local myCharacter = LocalPlayer.Character
-    local myRoot = myCharacter and myCharacter:FindFirstChild("HumanoidRootPart")
+    for model, data in pairs(botData) do
+        if model.Parent and data.root.Parent
+            and data.humanoid.Health > 0 then
 
-    for player, data in pairs(overlays) do
-        local character = player.Character
-        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-        local root = character and character:FindFirstChild("HumanoidRootPart")
+            local offset = data.root.Position - myRoot.Position
+            local distance = offset.Magnitude
 
-        local alive = humanoid and humanoid.Health > 0 and root ~= nil
-        local visible = visualsEnabled and alive
+            if distance <= CONFIG.AimRange then
+                local part = model:FindFirstChild("Head") or data.root
+                local screenPoint, onScreen =
+                    camera:WorldToViewportPoint(part.Position)
 
-        data.highlight.Enabled = visible
-        data.healthGui.Enabled = visible
-        data.hitbox.Visible = visible and showHitboxes
-        data.distanceGui.Enabled = visible and showStuds
+                if onScreen and screenPoint.Z > 0 then
+                    local center = camera.ViewportSize / 2
+                    local screenDistance = (
+                        Vector2.new(screenPoint.X, screenPoint.Y) - center
+                    ).Magnitude
 
-        if alive then
-            local ratio = math.clamp(
-                humanoid.Health / math.max(humanoid.MaxHealth, 1),
-                0, 1
-            )
-
-            data.healthBar.Size = UDim2.fromScale(ratio, 1)
-            data.healthBar.BackgroundColor3 = Color3.fromRGB(
-                math.floor(230 - 160 * ratio),
-                math.floor(70 + 150 * ratio),
-                80
-            )
-
-            if myRoot then
-                local distance = (myRoot.Position - root.Position).Magnitude
-                data.distanceText.Text = ("%d studs"):format(
-                    math.floor(distance + 0.5)
-                )
+                    if screenDistance < bestScore then
+                        bestScore = screenDistance
+                        bestModel = model
+                    end
+                end
             end
         end
     end
+
+    return bestModel
+end
+
+-- Main update
+local updateAccumulator = 0
+
+local connection = RunService.Heartbeat:Connect(function(dt)
+    if not running then return end
+
+    frameCount += 1
+    elapsed += dt
+    updateAccumulator += dt
+
+    if elapsed >= 1 then
+        fps = math.floor(frameCount / elapsed + 0.5)
+        fpsLabel.Text = ("FPS: %d"):format(fps)
+        frameCount = 0
+        elapsed = 0
+    end
+
+    if updateAccumulator < CONFIG.UpdateRate then
+        return
+    end
+    updateAccumulator = 0
+
+    local character = player.Character
+    local myRoot = character and character:FindFirstChild("HumanoidRootPart")
+
+    for model, data in pairs(botData) do
+        if not model.Parent or not data.root.Parent
+            or not data.humanoid.Parent then
+            removeBot(model)
+            continue
+        end
+
+        local alive = data.humanoid.Health > 0
+        local enabled = showVisuals and alive
+
+        data.highlight.Enabled = enabled
+        data.hitbox.Visible = enabled and CONFIG.ShowHitboxes
+        data.healthGui.Enabled = enabled and CONFIG.ShowHealth
+        data.distanceGui.Enabled = enabled and CONFIG.ShowDistance
+
+        local ratio = math.clamp(
+            data.humanoid.Health /
+                math.max(data.humanoid.MaxHealth, 1),
+            0, 1
+        )
+
+        data.healthFill.Size = UDim2.fromScale(ratio, 1)
+        data.healthFill.BackgroundColor3 = Color3.fromRGB(
+            math.floor(230 * (1 - ratio) + 45 * ratio),
+            math.floor(65 * (1 - ratio) + 220 * ratio),
+            80
+        )
+
+        if myRoot then
+            local distance = (myRoot.Position - data.root.Position).Magnitude
+            data.distanceText.Text =
+                ("%d studs"):format(math.floor(distance + 0.5))
+        end
+    end
+
+    -- NPC-only camera aim assist for training.
+    if aimEnabled then
+        local target = findNearestBot()
+        local camera = workspace.CurrentCamera
+
+        if target and camera then
+            local data = botData[target]
+            local part = target:FindFirstChild("Head")
+                or (data and data.root)
+
+            if part then
+                local desired = CFrame.lookAt(
+                    camera.CFrame.Position,
+                    part.Position
+                )
+
+                local alpha = 1 - math.exp(
+                    -CONFIG.AimSmoothness * CONFIG.UpdateRate
+                )
+
+                camera.CFrame = camera.CFrame:Lerp(desired, alpha)
+                targetLabel.Text = "Target: " .. target.Name
+            end
+        else
+            targetLabel.Text = "Target: none"
+        end
+    else
+        targetLabel.Text = "Target: none"
+    end
 end)
 
-print("Debug overlay ready.")
+-- Cleanup if this LocalScript is destroyed
+script.Destroying:Connect(function()
+    running = false
+    connection:Disconnect()
+
+    for model in pairs(botData) do
+        removeBot(model)
+    end
+
+    gui:Destroy()
+end)
+
+print("FPS training debug client loaded.")
