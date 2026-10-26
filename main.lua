@@ -640,3 +640,158 @@ end
 Module.Config = Config
 
 return Module
+
+
+--==================================================
+-- MOBILE SUPPORT
+-- Insert before: return Module
+--==================================================
+
+local IsTouchDevice = UserInputService.TouchEnabled
+
+-- Responsive GUI sizing
+local function updateResponsiveLayout()
+    local camera = workspace.CurrentCamera
+    if not camera then
+        return
+    end
+
+    local viewport = camera.ViewportSize
+    local mobile = IsTouchDevice or viewport.X < 700
+
+    if mobile then
+        Main.Size = UDim2.new(0.92, 0, 0, 300)
+        Main.Position = UDim2.new(0.04, 0, 0.18, 0)
+
+        -- Keep the panel within the visible screen area.
+        Main.AnchorPoint = Vector2.zero
+
+        Title.TextSize = 14
+        Subtitle.TextSize = 9
+
+        Tabs.Size = UDim2.new(1, -20, 0, 36)
+        Tabs.Position = UDim2.fromOffset(10, 62)
+
+        Content.Size = UDim2.new(1, -20, 1, -108)
+        Content.Position = UDim2.fromOffset(10, 103)
+    else
+        Main.AnchorPoint = Vector2.zero
+        Main.Size = UDim2.fromOffset(440, 310)
+        Main.Position = UDim2.new(0.5, -220, 0.5, -155)
+
+        Title.TextSize = 16
+        Subtitle.TextSize = 10
+
+        Tabs.Size = UDim2.new(1, -28, 0, 38)
+        Tabs.Position = UDim2.fromOffset(14, 65)
+
+        Content.Size = UDim2.new(1, -28, 1, -120)
+        Content.Position = UDim2.fromOffset(14, 110)
+    end
+end
+
+-- Floating touch button
+local MobileButton = Instance.new("TextButton")
+MobileButton.Name = "MobileToggle"
+MobileButton.Size = UDim2.fromOffset(54, 54)
+MobileButton.Position = UDim2.new(1, -72, 0.55, 0)
+MobileButton.BackgroundColor3 = Color3.fromRGB(35, 65, 110)
+MobileButton.BackgroundTransparency = 0.12
+MobileButton.Text = "HUD"
+MobileButton.TextColor3 = Color3.new(1, 1, 1)
+MobileButton.TextSize = 13
+MobileButton.Font = Enum.Font.GothamBold
+MobileButton.Visible = IsTouchDevice
+MobileButton.Active = true
+MobileButton.Parent = ScreenGui
+
+Instance.new("UICorner", MobileButton).CornerRadius =
+    UDim.new(1, 0)
+
+local MobileStroke = Instance.new("UIStroke")
+MobileStroke.Color = Color3.fromRGB(110, 175, 255)
+MobileStroke.Transparency = 0.2
+MobileStroke.Parent = MobileButton
+
+MobileButton.Activated:Connect(function()
+    GUIVisible = not GUIVisible
+    Main.Visible = GUIVisible
+end)
+
+-- Drag panel using either touch or mouse.
+local dragInput
+local touchStart
+local panelStart
+
+Title.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseButton1 then
+
+        dragging = true
+        touchStart = input.Position
+        panelStart = Main.Position
+        dragInput = input
+    end
+end)
+
+Title.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseMovement then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and dragInput and input == dragInput then
+        local delta = input.Position - touchStart
+
+        Main.Position = UDim2.new(
+            panelStart.X.Scale,
+            panelStart.X.Offset + delta.X,
+            panelStart.Y.Scale,
+            panelStart.Y.Offset + delta.Y
+        )
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+
+-- Recalculate layout when rotating the device.
+local function bindCamera(camera)
+    if not camera then
+        return
+    end
+
+    updateResponsiveLayout()
+
+    Connections.Viewport = camera:GetPropertyChangedSignal(
+        "ViewportSize"
+    ):Connect(updateResponsiveLayout)
+end
+
+bindCamera(workspace.CurrentCamera)
+
+Connections.CameraChanged =
+    workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+        if Connections.Viewport then
+            Connections.Viewport:Disconnect()
+        end
+
+        bindCamera(workspace.CurrentCamera)
+    end)
+
+-- Cleanup mobile-specific controls.
+local originalDestroy = Module.Destroy
+
+function Module.Destroy()
+    if MobileButton then
+        MobileButton:Destroy()
+    end
+
+    originalDestroy()
+end
